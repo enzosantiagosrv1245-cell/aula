@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: jogo-multiplayer-bolinhas
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /status
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        fromService:
+          type: web
+          name: jogo-multiplayer-bolinhas
+          property: port
+    scaling:
+      minInstances: 1
+      maxInstances: 1
