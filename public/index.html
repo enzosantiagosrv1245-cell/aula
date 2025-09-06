@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo Multiplayer - Bolinhas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #2E7D32;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            background-color: #2E7D32;
+        }
+
+        #gameCanvas {
+            border: 3px solid #1B5E20;
+            display: block;
+            background-color: #4CAF50;
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 100;
+        }
+
+        #playerInfo {
+            background-color: rgba(27, 94, 32, 0.9);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border: 2px solid #1B5E20;
+            min-width: 200px;
+        }
+
+        #controls {
+            background-color: rgba(27, 94, 32, 0.9);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            border: 2px solid #1B5E20;
+        }
+
+        #minimapContainer {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 100;
+            background-color: rgba(27, 94, 32, 0.9);
+            border: 3px solid #1B5E20;
+            border-radius: 8px;
+            padding: 8px;
+        }
+
+        #minimapCanvas {
+            display: block;
+            border: 1px solid #1B5E20;
+            border-radius: 4px;
+            background-color: #4CAF50;
+        }
+
+        #minimapTitle {
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #E8F5E8;
+        }
+
+        #chat {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 320px;
+            z-index: 100;
+        }
+
+        #chatMessages {
+            background-color: rgba(27, 94, 32, 0.95);
+            height: 160px;
+            overflow-y: scroll;
+            padding: 12px;
+            border-radius: 8px 8px 0 0;
+            font-size: 13px;
+            border: 2px solid #1B5E20;
+            border-bottom: none;
+        }
+
+        #chatInput {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #1B5E20;
+            background-color: rgba(46, 125, 50, 0.9);
+            color: #fff;
+            border-radius: 0 0 8px 8px;
+            font-size: 13px;
+        }
+
+        #chatInput:focus {
+            outline: 2px solid #81C784;
+            background-color: rgba(56, 142, 60, 0.95);
+        }
+
+        #chatInput::placeholder {
+            color: #A5D6A7;
+        }
+
+        .player {
+            position: absolute;
+            border-radius: 50%;
+            transition: none;
+        }
+
+        .message {
+            margin-bottom: 6px;
+            word-wrap: break-word;
+            line-height: 1.3;
+        }
+
+        .system-message {
+            color: #81C784;
+            font-style: italic;
+        }
+
+        .player-message {
+            color: #E8F5E8;
+        }
+
+        .player-name {
+            color: #FFEB3B;
+            font-weight: bold;
+        }
+
+        .info-label {
+            color: #A5D6A7;
+            font-size: 12px;
+        }
+
+        .info-value {
+            color: #E8F5E8;
+            font-weight: bold;
+        }
+
+        /* Scrollbar customizada para o chat */
+        #chatMessages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #chatMessages::-webkit-scrollbar-track {
+            background: rgba(27, 94, 32, 0.5);
+            border-radius: 3px;
+        }
+
+        #chatMessages::-webkit-scrollbar-thumb {
+            background: #81C784;
+            border-radius: 3px;
+        }
+
+        #chatMessages::-webkit-scrollbar-thumb:hover {
+            background: #A5D6A7;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui">
+            <div id="playerInfo">
+                <div><span class="info-label">Jogador:</span> <span id="playerName" class="info-value">Carregando...</span></div>
+                <div><span class="info-label">Score:</span> <span id="playerScore" class="info-value">0</span></div>
+                <div><span class="info-label">Online:</span> <span id="playersCount" class="info-value">1</span></div>
+                <div><span class="info-label">Posição:</span> <span id="playerPosition" class="info-value">0, 0</span></div>
+            </div>
+            
+            <div id="controls">
+                <div><strong>🎮 Controles:</strong></div>
+                <div>• WASD ou Setas para mover</div>
+                <div>• Enter para chat</div>
+                <div>• ESC para sair do chat</div>
+            </div>
+        </div>
+
+        <div id="minimapContainer">
+            <div id="minimapTitle">📍 MAPA</div>
+            <canvas id="minimapCanvas" width="150" height="120"></canvas>
+        </div>
+
+        <div id="chat">
+            <div id="chatMessages"></div>
+            <input type="text" id="chatInput" placeholder="💬 Digite sua mensagem..." maxlength="100">
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Configuração inicial
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const minimapCanvas = document.getElementById('minimapCanvas');
+        const minimapCtx = minimapCanvas.getContext('2d');
+        const socket = io();
+
+        // Configurar tamanho do canvas principal
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Configurações do minimapa
+        const MINIMAP_WIDTH = 150;
+        const MINIMAP_HEIGHT = 120;
+        const MINIMAP_SCALE = 0.1; // 10% do tamanho real
+
+        // Variáveis do jogo
+        const players = {};
+        let myPlayerId = null;
+        let myPlayer = {
+            x: 400,
+            y: 300,
+            name: `Player_${Math.floor(Math.random() * 1000)}`,
+            score: 0,
+            color: '#2196F3' // Azul para destaque no fundo verde
+        };
+
+        // Controles
+        const keys = {
+            w: false, a: false, s: false, d: false,
+            ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false
+        };
+
+        // Configurações do jogo
+        const playerSpeed = 6;
+        const playerSize = 22;
+
+        // Elementos da UI
+        const playerNameEl = document.getElementById('playerName');
+        const playerScoreEl = document.getElementById('playerScore');
+        const playersCountEl = document.getElementById('playersCount');
+        const playerPositionEl = document.getElementById('playerPosition');
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+
+        // Obstáculos/decorações no mapa (opcional)
+        const mapFeatures = [
+            { type: 'tree', x: 200, y: 150, size: 30, color: '#1B5E20' },
+            { type: 'tree', x: 600, y: 300, size: 25, color: '#1B5E20' },
+            { type: 'tree', x: 1000, y: 200, size: 35, color: '#1B5E20' },
+            { type: 'rock', x: 400, y: 500, size: 20, color: '#616161' },
+            { type: 'rock', x: 800, y: 100, size: 18, color: '#616161' },
+            { type: 'flower', x: 300, y: 400, size: 8, color: '#FFEB3B' },
+            { type: 'flower', x: 700, y: 450, size: 8, color: '#FF5722' },
+            { type: 'flower', x: 900, y: 350, size: 8, color: '#E91E63' }
+        ];
+
+        // Socket events
+        socket.on('connect', () => {
+            myPlayerId = socket.id;
+            myPlayer.x = Math.random() * (canvas.width - 100) + 50;
+            myPlayer.y = Math.random() * (canvas.height - 100) + 50;
+            
+            socket.emit('playerJoin', myPlayer);
+            playerNameEl.textContent = myPlayer.name;
+            
+            addChatMessage('🌟 Sistema', 'Bem-vindo ao jogo!', 'system-message');
+        });
+
+        socket.on('gameState', (gameState) => {
+            Object.keys(gameState.players).forEach(id => {
+                if (id !== myPlayerId) {
+                    players[id] = gameState.players[id];
+                }
+            });
+            updatePlayersCount();
+        });
+
+        socket.on('playerJoined', (playerData) => {
+            players[playerData.id] = playerData;
+            addChatMessage('🎮 Sistema', `${playerData.name} entrou no jogo`, 'system-message');
+            updatePlayersCount();
+        });
+
+        socket.on('playerMoved', (moveData) => {
+            if (players[moveData.id]) {
+                players[moveData.id].x = moveData.x;
+                players[moveData.id].y = moveData.y;
+            }
+        });
+
+        socket.on('playerLeft', (playerId) => {
+            if (players[playerId]) {
+                addChatMessage('👋 Sistema', `${players[playerId].name} saiu do jogo`, 'system-message');
+                delete players[playerId];
+            }
+            updatePlayersCount();
+        });
+
+        socket.on('chatMessage', (chatData) => {
+            addChatMessage(`👤 ${chatData.playerName}`, chatData.message, 'player-message');
+        });
+
+        socket.on('scoreUpdate', (scoreData) => {
+            if (scoreData.playerId === myPlayerId) {
+                myPlayer.score = scoreData.score;
+                playerScoreEl.textContent = scoreData.score;
+            } else if (players[scoreData.playerId]) {
+                players[scoreData.playerId].score = scoreData.score;
+            }
+        });
+
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            if (document.activeElement === chatInput) return;
+            
+            if (e.key in keys) {
+                keys[e.key] = true;
+            }
+            
+            if (e.key === 'Enter') {
+                chatInput.focus();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key in keys) {
+                keys[e.key] = false;
+            }
+        });
+
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const message = chatInput.value.trim();
+                if (message) {
+                    socket.emit('chatMessage', message);
+                    chatInput.value = '';
+                }
+                chatInput.blur();
+            }
+            
+            if (e.key === 'Escape') {
+                chatInput.blur();
+            }
+        });
+
+        // Redimensionar canvas quando a janela muda
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // Funções auxiliares
+        function addChatMessage(playerName, message, className = 'player-message') {
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${className}`;
+            messageEl.innerHTML = `<span class="player-name">${playerName}:</span> ${message}`;
+            
+            chatMessages.appendChild(messageEl);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // Limitar número de mensagens
+            if (chatMessages.children.length > 50) {
+                chatMessages.removeChild(chatMessages.firstChild);
+            }
+        }
+
+        function updatePlayersCount() {
+            const totalPlayers = Object.keys(players).length + 1;
+            playersCountEl.textContent = totalPlayers;
+        }
+
+        function updatePlayerPosition() {
+            const x = Math.round(myPlayer.x);
+            const y = Math.round(myPlayer.y);
+            playerPositionEl.textContent = `${x}, ${y}`;
+        }
+
+        function updatePlayer() {
+            let moved = false;
+            
+            // Movimento horizontal
+            if (keys.a || keys.ArrowLeft) {
+                if (myPlayer.x > playerSize) {
+                    myPlayer.x -= playerSpeed;
+                    moved = true;
+                }
+            }
+            if (keys.d || keys.ArrowRight) {
+                if (myPlayer.x < canvas.width - playerSize) {
+                    myPlayer.x += playerSpeed;
+                    moved = true;
+                }
+            }
+            
+            // Movimento vertical
+            if (keys.w || keys.ArrowUp) {
+                if (myPlayer.y > playerSize) {
+                    myPlayer.y -= playerSpeed;
+                    moved = true;
+                }
+            }
+            if (keys.s || keys.ArrowDown) {
+                if (myPlayer.y < canvas.height - playerSize) {
+                    myPlayer.y += playerSpeed;
+                    moved = true;
+                }
+            }
+            
+            // Enviar posição se moveu
+            if (moved) {
+                socket.emit('playerMove', { x: myPlayer.x, y: myPlayer.y });
+                updatePlayerPosition();
+            }
+        }
+
+        function drawMapFeatures(context, scale = 1, offsetX = 0, offsetY = 0) {
+            mapFeatures.forEach(feature => {
+                const x = (feature.x * scale) + offsetX;
+                const y = (feature.y * scale) + offsetY;
+                const size = feature.size * scale;
+                
+                context.fillStyle = feature.color;
+                context.beginPath();
+                
+                if (feature.type === 'tree' || feature.type === 'rock') {
+                    context.arc(x, y, size, 0, Math.PI * 2);
+                } else if (feature.type === 'flower') {
+                    // Desenhar flor como estrela pequena
+                    const spikes = 5;
+                    const outerRadius = size;
+                    const innerRadius = size * 0.4;
+                    
+                    context.beginPath();
+                    for (let i = 0; i < spikes * 2; i++) {
+                        const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                        const angle = (i / (spikes * 2)) * Math.PI * 2;
+                        const pointX = x + Math.cos(angle) * radius;
+                        const pointY = y + Math.sin(angle) * radius;
+                        
+                        if (i === 0) context.moveTo(pointX, pointY);
+                        else context.lineTo(pointX, pointY);
+                    }
+                    context.closePath();
+                }
+                
+                context.fill();
+            });
+        }
+
+        function render() {
+            // Limpar canvas principal
+            ctx.fillStyle = '#4CAF50';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Desenhar características do mapa no canvas principal
+            drawMapFeatures(ctx);
+            
+            // Desenhar outros jogadores
+            Object.values(players).forEach(player => {
+                // Sombra
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.beginPath();
+                ctx.arc(player.x + 2, player.y + 2, playerSize, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Jogador
+                ctx.fillStyle = player.color || '#FF5722';
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, playerSize, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Contorno
+                ctx.strokeStyle = '#1B5E20';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Nome do jogador
+                ctx.fillStyle = '#1B5E20';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(player.name, player.x, player.y - playerSize - 8);
+            });
+            
+            // Desenhar meu jogador (azul)
+            // Sombra
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.beginPath();
+            ctx.arc(myPlayer.x + 2, myPlayer.y + 2, playerSize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Jogador
+            ctx.fillStyle = myPlayer.color;
+            ctx.beginPath();
+            ctx.arc(myPlayer.x, myPlayer.y, playerSize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Contorno especial (você)
+            ctx.strokeStyle = '#0D47A1';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // Meu nome
+            ctx.fillStyle = '#0D47A1';
+            ctx.font = 'bold 13px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(myPlayer.name + ' (Você)', myPlayer.x, myPlayer.y - playerSize - 8);
+        }
+
+        function renderMinimap() {
+            // Limpar minimapa
+            minimapCtx.fillStyle = '#4CAF50';
+            minimapCtx.fillRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+            
+            // Desenhar características do mapa no minimapa
+            drawMapFeatures(minimapCtx, MINIMAP_SCALE);
+            
+            // Desenhar outros jogadores no minimapa
+            Object.values(players).forEach(player => {
+                minimapCtx.fillStyle = player.color || '#FF5722';
+                minimapCtx.beginPath();
+                minimapCtx.arc(
+                    player.x * MINIMAP_SCALE, 
+                    player.y * MINIMAP_SCALE, 
+                    3, 0, Math.PI * 2
+                );
+                minimapCtx.fill();
+            });
+            
+            // Desenhar meu jogador no minimapa (maior e com contorno)
+            minimapCtx.fillStyle = myPlayer.color;
+            minimapCtx.beginPath();
+            minimapCtx.arc(
+                myPlayer.x * MINIMAP_SCALE, 
+                myPlayer.y * MINIMAP_SCALE, 
+                4, 0, Math.PI * 2
+            );
+            minimapCtx.fill();
+            
+            minimapCtx.strokeStyle = '#0D47A1';
+            minimapCtx.lineWidth = 2;
+            minimapCtx.stroke();
+            
+            // Borda do minimapa
+            minimapCtx.strokeStyle = '#1B5E20';
+            minimapCtx.lineWidth = 2;
+            minimapCtx.strokeRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+        }
+
+        // Game loop
+        function gameLoop() {
+            updatePlayer();
+            render();
+            renderMinimap();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Iniciar jogo
+        gameLoop();
+    </script>
+</body>
+</html>
